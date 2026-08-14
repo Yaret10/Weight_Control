@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.MainViewModel
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,7 +102,7 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Text(
-                    text = "${weight ?: "0.00"} kg",
+                    text = String.format(Locale.US, "%.3f kg", weight ?: 0.0),
                     color = Color.Green,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Bold
