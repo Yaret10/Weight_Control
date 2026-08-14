@@ -32,10 +32,14 @@ fun ManagementScreen(viewModel: MainViewModel) {
                 Text("Nuevo Cliente", style = MaterialTheme.typography.titleLarge)
                 TextField(value = clienteNombre, onValueChange = { clienteNombre = it }, label = { Text("Nombre") })
                 TextField(value = clienteIden, onValueChange = { clienteIden = it }, label = { Text("DNI/RUC") })
-                Button(onClick = { 
-                    viewModel.addCliente(clienteNombre, clienteIden)
-                    clienteNombre = ""; clienteIden = ""
-                }) { Text("Añadir Cliente") }
+                Button(
+                    onClick = {
+                        viewModel.addCliente(clienteNombre.trim(), clienteIden.trim())
+                        clienteNombre = ""
+                        clienteIden = ""
+                    },
+                    enabled = clienteNombre.isNotBlank() || clienteIden.isNotBlank()
+                ) { Text("Añadir Cliente") }
             }
         }
 
@@ -47,10 +51,14 @@ fun ManagementScreen(viewModel: MainViewModel) {
                 Text("Nuevo Producto", style = MaterialTheme.typography.titleLarge)
                 TextField(value = productoNombre, onValueChange = { productoNombre = it }, label = { Text("Nombre Producto") })
                 TextField(value = productoDesc, onValueChange = { productoDesc = it }, label = { Text("Descripción") })
-                Button(onClick = { 
-                    viewModel.addProducto(productoNombre, productoDesc)
-                    productoNombre = ""; productoDesc = ""
-                }) { Text("Añadir Producto") }
+                Button(
+                    onClick = {
+                        viewModel.addProducto(productoNombre.trim(), productoDesc.trim())
+                        productoNombre = ""
+                        productoDesc = ""
+                    },
+                    enabled = productoNombre.isNotBlank() || productoDesc.isNotBlank()
+                ) { Text("Añadir Producto") }
             }
         }
     }

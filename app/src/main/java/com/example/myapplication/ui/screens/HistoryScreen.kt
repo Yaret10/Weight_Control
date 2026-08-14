@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -28,6 +29,12 @@ fun HistoryScreen(viewModel: MainViewModel) {
     val fileNameFormat = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var registroToDelete by remember { mutableStateOf<RegistroWithDetails?>(null) }
+    val selectedRegistroIds = remember { mutableStateListOf<Int>() }
+    val allSelected = history.isNotEmpty() && history.all { it.registro.id in selectedRegistroIds }
+
+    LaunchedEffect(history) {
+        selectedRegistroIds.retainAll(history.map { it.registro.id }.toSet())
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -51,8 +58,26 @@ fun HistoryScreen(viewModel: MainViewModel) {
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Historial de Pesajes", style = MaterialTheme.typography.headlineMedium)
+        Text("Historial de Pesajes", style = MaterialTheme.typography.headlineMedium)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(
+                    checked = allSelected,
+                    onCheckedChange = { shouldSelectAll ->
+                        selectedRegistroIds.clear()
+                        if (shouldSelectAll) {
+                            selectedRegistroIds.addAll(history.map { it.registro.id })
+                        }
+                    },
+                    enabled = history.isNotEmpty()
+                )
+                Text("Seleccionar todos")
+            }
+
             Row {
                 IconButton(
                     onClick = {
@@ -84,26 +109,52 @@ fun HistoryScreen(viewModel: MainViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyColumn {
-            items(history) { item ->
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(history, key = { it.registro.id }) { item ->
                 ListItem(
-                    headlineContent = { Text("${item.registro.peso} kg - ${item.producto.nombre}") },
+                    headlineContent = {
+                        Text("${String.format(Locale.US, "%.3f", item.registro.peso)} kg - ${item.producto.nombre}")
+                    },
                     supportingContent = {
                         Text("Cliente: ${item.cliente.nombre}\nFecha: ${dateFormat.format(Date(item.registro.fecha))}")
                     },
                     overlineContent = { Text("ID: ${item.registro.id}") },
                     trailingContent = {
-                        IconButton(onClick = { registroToDelete = item }) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Eliminar registro ${item.registro.id}",
-                                tint = MaterialTheme.colorScheme.error
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = item.registro.id in selectedRegistroIds,
+                                onCheckedChange = { isSelected ->
+                                    if (isSelected) {
+                                        if (item.registro.id !in selectedRegistroIds) {
+                                            selectedRegistroIds.add(item.registro.id)
+                                        }
+                                    } else {
+                                        selectedRegistroIds.remove(item.registro.id)
+                                    }
+                                }
                             )
+                            IconButton(onClick = { registroToDelete = item }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Eliminar registro ${item.registro.id}",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 )
                 HorizontalDivider()
             }
+        }
+
+        Button(
+            onClick = { /* La impresión Bluetooth se implementará posteriormente. */ },
+            enabled = selectedRegistroIds.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            Icon(Icons.Default.Print, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("IMPRIMIR (${selectedRegistroIds.size})")
         }
     }
 
@@ -114,7 +165,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
             title = { Text("¿Eliminar este registro?") },
             text = {
                 Text(
-                    "${item.registro.peso} kg - ${item.producto.nombre}\n" +
+                    "${String.format(Locale.US, "%.3f", item.registro.peso)} kg - ${item.producto.nombre}\n" +
                         "Cliente: ${item.cliente.nombre}"
                 )
             },
