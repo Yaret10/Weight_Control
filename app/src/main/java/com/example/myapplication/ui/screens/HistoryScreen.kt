@@ -31,6 +31,13 @@ fun HistoryScreen(viewModel: MainViewModel) {
     var registroToDelete by remember { mutableStateOf<RegistroWithDetails?>(null) }
     val selectedRegistroIds = remember { mutableStateListOf<Int>() }
     val allSelected = history.isNotEmpty() && history.all { it.registro.id in selectedRegistroIds }
+    val isPrinting by viewModel.isPrinting.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.printMessages.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
 
     LaunchedEffect(history) {
         selectedRegistroIds.retainAll(history.map { it.registro.id }.toSet())
@@ -148,13 +155,21 @@ fun HistoryScreen(viewModel: MainViewModel) {
         }
 
         Button(
-            onClick = { /* La impresión Bluetooth se implementará posteriormente. */ },
-            enabled = selectedRegistroIds.isNotEmpty(),
+            onClick = {
+                viewModel.printRegistros(
+                    history.filter { it.registro.id in selectedRegistroIds }
+                )
+            },
+            enabled = selectedRegistroIds.isNotEmpty() && !isPrinting,
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
-            Icon(Icons.Default.Print, contentDescription = null)
+            if (isPrinting) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Default.Print, contentDescription = null)
+            }
             Spacer(modifier = Modifier.width(8.dp))
-            Text("IMPRIMIR (${selectedRegistroIds.size})")
+            Text(if (isPrinting) "CONECTANDO E IMPRIMIENDO..." else "IMPRIMIR (${selectedRegistroIds.size})")
         }
     }
 

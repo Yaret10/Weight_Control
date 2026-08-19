@@ -45,7 +45,11 @@ class MainActivity : ComponentActivity() {
 
                 val launcher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions()
-                ) { /* El usuario elegirá manualmente el indicador. */ }
+                ) { permissions ->
+                    if (permissions.values.all { it }) {
+                        viewModel.autoConnectSavedScale()
+                    }
+                }
 
                 LaunchedEffect(Unit) {
                     launcher.launch(permissionsToRequest)
