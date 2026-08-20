@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,15 @@ fun HistoryScreen(viewModel: MainViewModel) {
     var registroToDelete by remember { mutableStateOf<RegistroWithDetails?>(null) }
     val selectedRegistroIds = remember { mutableStateListOf<Int>() }
     val allSelected = history.isNotEmpty() && history.all { it.registro.id in selectedRegistroIds }
+    val isPrinting by viewModel.isPrinting.collectAsState()
+    var placaVehiculo by rememberSaveable { mutableStateOf("") }
+    var conductor by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        viewModel.printMessages.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
 
     LaunchedEffect(history) {
         selectedRegistroIds.retainAll(history.map { it.registro.id }.toSet())
@@ -57,7 +67,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().imePadding().padding(16.dp)) {
         Text("Historial de Pesajes", style = MaterialTheme.typography.headlineMedium)
 
         Row(
@@ -113,12 +123,19 @@ fun HistoryScreen(viewModel: MainViewModel) {
             items(history, key = { it.registro.id }) { item ->
                 ListItem(
                     headlineContent = {
-                        Text("${String.format(Locale.US, "%.3f", item.registro.peso)} kg - ${item.producto.nombre}")
+                        Text("${String.format(Locale.US, "%.3f", item.registro.peso)} kg netos - ${item.producto.nombre}")
                     },
                     supportingContent = {
-                        Text("Cliente: ${item.cliente.nombre}\nFecha: ${dateFormat.format(Date(item.registro.fecha))}")
+                        Text(
+                            "Cliente: ${item.cliente.nombre}\n" +
+                                "Operador: ${item.operador?.nombre ?: "Sin operador"}\n" +
+                                "Placa: ${item.registro.placaVehiculo} · Conductor: ${item.registro.conductor}\n" +
+                                "Bruto: ${String.format(Locale.US, "%.3f", item.registro.pesoBruto)} kg · " +
+                                "Tara: ${String.format(Locale.US, "%.3f", item.registro.pesoTara)} kg\n" +
+                                "Fecha: ${dateFormat.format(Date(item.registro.fecha))}"
+                        )
                     },
-                    overlineContent = { Text("ID: ${item.registro.id}") },
+                    overlineContent = { Text("Ticket: ${item.registro.codigoTicket}") },
                     trailingContent = {
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Checkbox(
@@ -147,14 +164,41 @@ fun HistoryScreen(viewModel: MainViewModel) {
             }
         }
 
+        OutlinedTextField(
+            value = placaVehiculo,
+            onValueChange = { placaVehiculo = it.uppercase() },
+            label = { Text("Placa del vehículo (opcional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = conductor,
+            onValueChange = { conductor = it },
+            label = { Text("Conductor (opcional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
         Button(
-            onClick = { /* La impresión Bluetooth se implementará posteriormente. */ },
-            enabled = selectedRegistroIds.isNotEmpty(),
+            onClick = {
+                viewModel.printRegistros(
+                    history.filter { it.registro.id in selectedRegistroIds },
+                    placaVehiculo,
+                    conductor
+                )
+            },
+            enabled = selectedRegistroIds.isNotEmpty() && !isPrinting,
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
-            Icon(Icons.Default.Print, contentDescription = null)
+            if (isPrinting) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Default.Print, contentDescription = null)
+            }
             Spacer(modifier = Modifier.width(8.dp))
-            Text("IMPRIMIR (${selectedRegistroIds.size})")
+            Text(if (isPrinting) "CONECTANDO E IMPRIMIENDO..." else "IMPRIMIR (${selectedRegistroIds.size})")
         }
     }
 
@@ -220,17 +264,22 @@ fun HistoryScreen(viewModel: MainViewModel) {
 }
 
 private fun createCsv(history: List<RegistroWithDetails>): String = buildString {
-    appendLine("ID;Fecha;Identificacion cliente;Cliente;Producto;Descripcion producto;Peso kg")
+    appendLine("Ticket;Fecha;Identificacion cliente;Cliente;Producto;Descripcion producto;Operador;Placa;Conductor;Peso bruto kg;Tara kg;Peso neto kg")
     val exportDateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
 
     history.forEach { item ->
         val values = listOf(
-            item.registro.id.toString(),
+            item.registro.codigoTicket,
             exportDateFormat.format(Date(item.registro.fecha)),
             item.cliente.identificacion,
             item.cliente.nombre,
             item.producto.nombre,
             item.producto.descripcion,
+            item.operador?.nombre.orEmpty(),
+            item.registro.placaVehiculo,
+            item.registro.conductor,
+            item.registro.pesoBruto.toString(),
+            item.registro.pesoTara.toString(),
             item.registro.peso.toString()
         )
         appendLine(values.joinToString(";") { csvCell(it) })

@@ -14,5 +14,10 @@ data class RegistroWithDetails(
         parentColumn = "productoId",
         entityColumn = "id"
     )
-    val producto: Producto
+    val producto: Producto,
+    @Relation(
+        parentColumn = "operadorId",
+        entityColumn = "id"
+    )
+    val operador: Operador?
 )
