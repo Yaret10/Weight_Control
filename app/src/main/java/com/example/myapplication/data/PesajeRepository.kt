@@ -8,12 +8,16 @@ class PesajeRepository(private val appDao: AppDao) {
     
     val allClientes = appDao.getAllClientes()
     val allProductos = appDao.getAllProductos()
+    val allOperadores = appDao.getAllOperadores()
 
     suspend fun addCliente(cliente: Cliente) = appDao.insertCliente(cliente)
     suspend fun addProducto(producto: Producto) = appDao.insertProducto(producto)
-    suspend fun addRegistro(registro: Registro) = appDao.insertRegistro(registro)
+    suspend fun addOperador(operador: Operador) = appDao.insertOperador(operador)
+    suspend fun addRegistro(registro: Registro, year: Int) = appDao.insertRegistroConCorrelativo(registro, year)
     suspend fun deleteAllRegistros() = appDao.deleteAllRegistros()
     suspend fun deleteRegistro(registroId: Int) = appDao.deleteRegistro(registroId)
+    suspend fun updateDatosTransporte(registroIds: List<Int>, placaVehiculo: String, conductor: String) =
+        appDao.updateDatosTransporte(registroIds, placaVehiculo, conductor)
 
     fun getFilteredHistory(
         clienteId: Int? = null,

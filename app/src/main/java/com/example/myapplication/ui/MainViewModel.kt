@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import java.util.Calendar
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
@@ -84,17 +85,29 @@ class MainViewModel(context: Context) : ViewModel() {
         bluetoothService.disconnect()
     }
 
-    fun printRegistros(registros: List<RegistroWithDetails>) {
+    fun printRegistros(registros: List<RegistroWithDetails>, placaVehiculo: String = "", conductor: String = "") {
         if (_isPrinting.value || registros.isEmpty()) return
         viewModelScope.launch {
             _isPrinting.value = true
-            printerService.print(registros).fold(
-                onSuccess = { _printMessages.emit(it) },
-                onFailure = { error ->
-                    _printMessages.emit("No se pudo imprimir: ${error.localizedMessage ?: "error de Bluetooth"}")
-                }
-            )
-            _isPrinting.value = false
+            val placa = placaVehiculo.trim()
+            val nombreConductor = conductor.trim()
+            try {
+                repository.updateDatosTransporte(
+                    registros.map { it.registro.id },
+                    placa,
+                    nombreConductor
+                )
+                printerService.print(registros, placa, nombreConductor).fold(
+                    onSuccess = { _printMessages.emit(it) },
+                    onFailure = { error ->
+                        _printMessages.emit("No se pudo imprimir: ${error.localizedMessage ?: "error de Bluetooth"}")
+                    }
+                )
+            } catch (error: Exception) {
+                _printMessages.emit("No se pudieron guardar los datos: ${error.localizedMessage ?: "error de base de datos"}")
+            } finally {
+                _isPrinting.value = false
+            }
         }
     }
 
@@ -107,6 +120,7 @@ class MainViewModel(context: Context) : ViewModel() {
     // Data
     val clientes = repository.allClientes
     val productos = repository.allProductos
+    val operadores = repository.allOperadores
 
     private val _selectedCliente = MutableStateFlow<Cliente?>(null)
     val selectedCliente: StateFlow<Cliente?> = _selectedCliente.asStateFlow()
@@ -114,12 +128,48 @@ class MainViewModel(context: Context) : ViewModel() {
     private val _selectedProducto = MutableStateFlow<Producto?>(null)
     val selectedProducto: StateFlow<Producto?> = _selectedProducto.asStateFlow()
 
+    private val _selectedOperador = MutableStateFlow<Operador?>(null)
+    val selectedOperador: StateFlow<Operador?> = _selectedOperador.asStateFlow()
+
+    private val _taraRegistrada = MutableStateFlow(0.0)
+    val taraRegistrada: StateFlow<Double> = _taraRegistrada.asStateFlow()
+
+    private val _indicadorTarado = MutableStateFlow(false)
+    val indicadorTarado: StateFlow<Boolean> = _indicadorTarado.asStateFlow()
+
     fun selectCliente(cliente: Cliente) {
         _selectedCliente.value = cliente
     }
 
     fun selectProducto(producto: Producto) {
         _selectedProducto.value = producto
+    }
+
+    fun selectOperador(operador: Operador) {
+        _selectedOperador.value = operador
+    }
+
+    fun capturarTara(peso: Double) {
+        if (peso > 0.0 && _taraRegistrada.value == 0.0) {
+            _taraRegistrada.value = peso
+            _indicadorTarado.value = false
+        }
+    }
+
+    fun registrarTara(peso: Double) {
+        if (peso > 0.0 && _taraRegistrada.value == 0.0) {
+            _taraRegistrada.value = peso
+            _indicadorTarado.value = true
+        }
+    }
+
+    fun confirmarIndicadorTarado() {
+        if (_taraRegistrada.value > 0.0) _indicadorTarado.value = true
+    }
+
+    fun limpiarTara() {
+        _taraRegistrada.value = 0.0
+        _indicadorTarado.value = false
     }
 
     private val _clienteFilter = MutableStateFlow<Int?>(null)
@@ -148,14 +198,34 @@ class MainViewModel(context: Context) : ViewModel() {
         viewModelScope.launch { repository.addProducto(Producto(nombre = nombre, descripcion = desc)) }
     }
 
-    fun saveRegistro(clienteId: Int, productoId: Int, peso: Double) {
+    fun addOperador(nombre: String) {
+        viewModelScope.launch { repository.addOperador(Operador(nombre = nombre)) }
+    }
+
+    fun saveRegistro(
+        clienteId: Int,
+        productoId: Int,
+        operadorId: Int,
+        placaVehiculo: String,
+        conductor: String,
+        pesoNeto: Double,
+        pesoTara: Double
+    ) {
         viewModelScope.launch {
+            val timestamp = System.currentTimeMillis()
+            val year = Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.YEAR)
             repository.addRegistro(Registro(
                 clienteId = clienteId,
                 productoId = productoId,
-                peso = peso,
-                fecha = System.currentTimeMillis()
-            ))
+                operadorId = operadorId,
+                codigoTicket = "",
+                placaVehiculo = placaVehiculo,
+                conductor = conductor,
+                pesoBruto = pesoNeto + pesoTara,
+                pesoTara = pesoTara,
+                peso = pesoNeto,
+                fecha = timestamp
+            ), year)
         }
     }
 

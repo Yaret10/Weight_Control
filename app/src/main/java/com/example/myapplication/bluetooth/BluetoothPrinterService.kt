@@ -27,7 +27,11 @@ class BluetoothPrinterService(context: Context) {
     private var socket: BluetoothSocket? = null
 
     @SuppressLint("MissingPermission")
-    suspend fun print(registros: List<RegistroWithDetails>): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun print(
+        registros: List<RegistroWithDetails>,
+        placaVehiculo: String = "",
+        conductor: String = ""
+    ): Result<String> = withContext(Dispatchers.IO) {
         val result = runCatching {
             require(registros.isNotEmpty()) { "No hay registros seleccionados" }
             val device = findPrinter()
@@ -38,7 +42,7 @@ class BluetoothPrinterService(context: Context) {
                 try {
                     ensureConnected(device)
                     socket!!.outputStream.apply {
-                        write(createTicket(registros))
+                        write(createTicket(registros, placaVehiculo, conductor))
                         flush()
                     }
                     preferences.edit().putString(KEY_ADDRESS, device.address).apply()
@@ -92,7 +96,7 @@ class BluetoothPrinterService(context: Context) {
         throw IOException("No se pudo conectar con ${device.name ?: PRINTER_NAME}", failure)
     }
 
-    private fun createTicket(items: List<RegistroWithDetails>): ByteArray {
+    private fun createTicket(items: List<RegistroWithDetails>, placaVehiculo: String, conductor: String): ByteArray {
         val output = ByteArrayOutputStream()
         fun command(vararg bytes: Int) = output.write(bytes.map(Int::toByte).toByteArray())
         fun line(text: String = "") {
@@ -102,29 +106,40 @@ class BluetoothPrinterService(context: Context) {
 
         command(0x1B, 0x40) // Inicializar ESC/POS.
         command(0x1B, 0x74, 0x02) // Página CP850 para tildes y eñes.
-        command(0x1B, 0x61, 0x01) // Centrar.
-        command(0x1B, 0x45, 0x01)
-        line("REGISTROS DE PESAJE")
-        command(0x1B, 0x45, 0x00)
-        line(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date()))
-        command(0x1B, 0x61, 0x00) // Alinear a la izquierda.
-        line("-".repeat(CHARS_PER_LINE))
-
-        val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-        items.forEachIndexed { index, item ->
-            line("${index + 1}. ID ${item.registro.id}  ${dateFormat.format(Date(item.registro.fecha))}")
-            wrap("Cliente: ${item.cliente.nombre}").forEach(::line)
-            wrap("Producto: ${item.producto.nombre}").forEach(::line)
+        val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        items.forEach { item ->
+            command(0x1B, 0x61, 0x01)
             command(0x1B, 0x45, 0x01)
-            line("Peso: ${String.format(Locale.US, "%.3f", item.registro.peso)} kg")
+            line("MAPSAC - PATSAC")
             command(0x1B, 0x45, 0x00)
+            line("BALANZA LOGÍSTICA")
             line()
+            command(0x1B, 0x61, 0x00)
+            line("-".repeat(CHARS_PER_LINE))
+            line("TICKET NRO: ${item.registro.codigoTicket}")
+            line("FECHA: ${dateFormat.format(Date(item.registro.fecha))}")
+            line("HORA DE PESAJE: ${timeFormat.format(Date(item.registro.fecha))}")
+            wrap("OPERADOR: ${item.operador?.nombre ?: "Sin operador"}").forEach(::line)
+            line("-".repeat(CHARS_PER_LINE))
+            wrap("CLIENTE: ${item.cliente.nombre}").forEach(::line)
+            val placaTicket = placaVehiculo.ifBlank { item.registro.placaVehiculo }
+            val conductorTicket = conductor.ifBlank { item.registro.conductor }
+            if (placaTicket.isNotBlank()) wrap("PLACA VEHÍCULO: $placaTicket").forEach(::line)
+            if (conductorTicket.isNotBlank()) wrap("CONDUCTOR: $conductorTicket").forEach(::line)
+            wrap("PRODUCTO: ${item.producto.nombre}").forEach(::line)
+            line("-".repeat(CHARS_PER_LINE))
+            line("PRIMER PESO (Bruto): ${String.format(Locale.US, "%.3f", item.registro.pesoBruto)} kg")
+            line("SEGUNDO PESO (Tara): ${String.format(Locale.US, "%.3f", item.registro.pesoTara)} kg")
+            line("-".repeat(CHARS_PER_LINE))
+            command(0x1B, 0x45, 0x01)
+            line("PESO NETO: ${String.format(Locale.US, "%.3f", item.registro.peso)} kg")
+            command(0x1B, 0x45, 0x00)
+            line(); line()
+            command(0x1B, 0x61, 0x01)
+            line("¡CONTROL DE PESAJE COMPLETADO!")
+            line(); line(); line()
         }
-        line("-".repeat(CHARS_PER_LINE))
-        line("Total de registros: ${items.size}")
-        command(0x1B, 0x61, 0x01)
-        line("Gracias")
-        line(); line(); line()
         command(0x1D, 0x56, 0x42, 0x00) // Corte; las portátiles sin cortador lo ignoran.
         return output.toByteArray()
     }

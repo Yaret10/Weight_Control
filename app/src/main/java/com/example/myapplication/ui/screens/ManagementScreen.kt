@@ -15,6 +15,7 @@ fun ManagementScreen(viewModel: MainViewModel) {
     var clienteIden by remember { mutableStateOf("") }
     var productoNombre by remember { mutableStateOf("") }
     var productoDesc by remember { mutableStateOf("") }
+    var operadorNombre by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -40,6 +41,27 @@ fun ManagementScreen(viewModel: MainViewModel) {
                     },
                     enabled = clienteNombre.isNotBlank() || clienteIden.isNotBlank()
                 ) { Text("Añadir Cliente") }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Nuevo Operador", style = MaterialTheme.typography.titleLarge)
+                TextField(
+                    value = operadorNombre,
+                    onValueChange = { operadorNombre = it },
+                    label = { Text("Nombre del operador") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        viewModel.addOperador(operadorNombre.trim())
+                        operadorNombre = ""
+                    },
+                    enabled = operadorNombre.isNotBlank()
+                ) { Text("Añadir Operador") }
             }
         }
 
