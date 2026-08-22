@@ -37,6 +37,7 @@ data class Registro(
     val codigoTicket: String,
     val placaVehiculo: String,
     val conductor: String,
+    val observacion: String,
     val pesoBruto: Double,
     val pesoTara: Double,
     val peso: Double,

@@ -102,6 +102,8 @@ class BluetoothService(private val context: Context) {
     private fun listenForData(connectedSocket: BluetoothSocket) {
         val inputStream = connectedSocket.inputStream
         val buffer = ByteArray(1024)
+        val frameBuffer = StringBuilder()
+        var receivingFrame = false
 
         while (_isConnected.value) {
             try {
@@ -111,10 +113,24 @@ class BluetoothService(private val context: Context) {
                     break
                 }
                 if (bytes > 0) {
-                    val receivedData = String(buffer, 0, bytes)
-                    WeightParser.parse(receivedData)?.let { parsedWeight ->
-                        _weightFlow.value = parsedWeight
-                        updateWeightStability(receivedData, parsedWeight)
+                    for (index in 0 until bytes) {
+                        val character = (buffer[index].toInt() and 0xFF).toChar()
+                        when (character) {
+                            '\u0002' -> {
+                                frameBuffer.clear()
+                                frameBuffer.append(character)
+                                receivingFrame = true
+                            }
+                            '\r' -> if (receivingFrame) {
+                                frameBuffer.append(character)
+                                processWeightFrame(frameBuffer.toString())
+                                frameBuffer.clear()
+                                receivingFrame = false
+                            }
+                            else -> if (receivingFrame && frameBuffer.length < MAX_FRAME_LENGTH) {
+                                frameBuffer.append(character)
+                            }
+                        }
                     }
                 }
             } catch (error: IOException) {
@@ -125,6 +141,31 @@ class BluetoothService(private val context: Context) {
 
         _isConnected.value = false
         closeSocket()
+    }
+
+    private fun processWeightFrame(frame: String) {
+        WeightParser.parse(frame)?.let { parsedWeight ->
+            _weightFlow.value = parsedWeight
+            updateWeightStability(frame, parsedWeight)
+        }
+    }
+
+    suspend fun tareIndicator(): Result<Unit> = sendCommand("T")
+
+    suspend fun clearTareIndicator(): Result<Unit> = sendCommand("C")
+
+    private suspend fun sendCommand(command: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val activeSocket = socket
+            check(_isConnected.value && activeSocket?.isConnected == true) {
+                "La balanza no está conectada"
+            }
+            activeSocket.outputStream.apply {
+                write(command.toByteArray(Charsets.US_ASCII))
+                flush()
+            }
+            Unit
+        }
     }
 
     fun disconnect() {
@@ -169,5 +210,6 @@ class BluetoothService(private val context: Context) {
     private companion object {
         const val STABLE_READING_COUNT = 3
         const val STABLE_TOLERANCE_KG = 0.02
+        const val MAX_FRAME_LENGTH = 64
     }
 }

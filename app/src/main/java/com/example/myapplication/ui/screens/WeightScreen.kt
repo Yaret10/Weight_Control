@@ -31,19 +31,39 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
     val selectedProducto by viewModel.selectedProducto.collectAsState()
     val selectedOperador by viewModel.selectedOperador.collectAsState()
     val taraRegistrada by viewModel.taraRegistrada.collectAsState()
+    val taraConfigurada by viewModel.taraConfigurada.collectAsState()
     val indicadorTarado by viewModel.indicadorTarado.collectAsState()
+    val lastSavedRegistro by viewModel.lastSavedRegistro.collectAsState()
+    val isPrinting by viewModel.isPrinting.collectAsState()
+    val isTareCommandRunning by viewModel.isTareCommandRunning.collectAsState()
     val context = LocalContext.current
 
     var clienteExpanded by remember { mutableStateOf(false) }
     var productoExpanded by remember { mutableStateOf(false) }
     var operadorExpanded by remember { mutableStateOf(false) }
+    var observacionExpanded by remember { mutableStateOf(false) }
     var taraManual by rememberSaveable { mutableStateOf("") }
+    var placaVehiculo by rememberSaveable { mutableStateOf("") }
+    var conductor by rememberSaveable { mutableStateOf("") }
+    var observacionSeleccionada by rememberSaveable { mutableStateOf("") }
+    var observacionManual by rememberSaveable { mutableStateOf("") }
+    val observacionRegistro = if (observacionSeleccionada == "OTRA") {
+        observacionManual.trim()
+    } else {
+        observacionSeleccionada
+    }
     val pesoNeto = weight ?: 0.0
     val pesoBruto = pesoNeto + taraRegistrada
 
     LaunchedEffect(weight, taraRegistrada) {
         if (taraRegistrada > 0.0 && kotlin.math.abs(weight ?: Double.MAX_VALUE) <= 0.01) {
             viewModel.confirmarIndicadorTarado()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.printMessages.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -131,6 +151,68 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
             }
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = placaVehiculo,
+            onValueChange = { placaVehiculo = it.uppercase() },
+            label = { Text("Placa del vehículo (opcional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = conductor,
+            onValueChange = { conductor = it },
+            label = { Text("Conductor (opcional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+        ExposedDropdownMenuBox(
+            expanded = observacionExpanded,
+            onExpandedChange = { observacionExpanded = !observacionExpanded }
+        ) {
+            TextField(
+                value = when (observacionSeleccionada) {
+                    "OTRA" -> "Otra observación"
+                    "" -> "Seleccionar observación"
+                    else -> observacionSeleccionada
+                },
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Observaciones (opcional)") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = observacionExpanded)
+                },
+                modifier = Modifier.menuAnchor().fillMaxWidth()
+            )
+            ExposedDropdownMenu(
+                expanded = observacionExpanded,
+                onDismissRequest = { observacionExpanded = false }
+            ) {
+                listOf("VENTA NACIONAL", "TRASLADO INTERNO", "OTRA").forEach { opcion ->
+                    DropdownMenuItem(
+                        text = { Text(if (opcion == "OTRA") "Otra observación" else opcion) },
+                        onClick = {
+                            observacionSeleccionada = opcion
+                            observacionExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+        if (observacionSeleccionada == "OTRA") {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = observacionManual,
+                onValueChange = { observacionManual = it },
+                label = { Text("Escriba la observación") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         Text("Registro de tara", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
         Row(
@@ -139,12 +221,12 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
         ) {
             Button(
                 onClick = { viewModel.registrarTara(100.0) },
-                enabled = taraRegistrada == 0.0,
+                enabled = !taraConfigurada,
                 modifier = Modifier.weight(1f)
             ) { Text("100 kg") }
             Button(
                 onClick = { viewModel.registrarTara(60.0) },
-                enabled = taraRegistrada == 0.0,
+                enabled = !taraConfigurada,
                 modifier = Modifier.weight(1f)
             ) { Text("60 kg") }
         }
@@ -155,14 +237,14 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
             },
             label = { Text("Otra tara (kg)") },
             singleLine = true,
-            enabled = taraRegistrada == 0.0,
+            enabled = !taraConfigurada,
             trailingIcon = {
                 TextButton(
                     onClick = {
                         taraManual.replace(',', '.').toDoubleOrNull()?.let(viewModel::registrarTara)
                     },
-                    enabled = taraRegistrada == 0.0 &&
-                        (taraManual.replace(',', '.').toDoubleOrNull() ?: 0.0) > 0.0
+                    enabled = !taraConfigurada &&
+                        (taraManual.replace(',', '.').toDoubleOrNull()?.let { it >= 0.0 } == true)
                 ) { Text("USAR") }
             },
             modifier = Modifier.fillMaxWidth()
@@ -174,17 +256,23 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
         ) {
             Button(
                 onClick = { viewModel.capturarTara(weight ?: 0.0) },
-                enabled = taraRegistrada == 0.0 && isConnected && isWeightStable &&
+                enabled = !isTareCommandRunning && !taraConfigurada && isConnected && isWeightStable &&
                     (weight ?: 0.0) > 0.0,
                 modifier = Modifier.weight(1f)
             ) { Text("CAPTURAR TARA") }
-            if (taraRegistrada > 0.0) {
-                OutlinedButton(onClick = viewModel::limpiarTara) { Text("QUITAR REGISTRO") }
+            if (taraConfigurada) {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.limpiarTara()
+                        taraManual = ""
+                    },
+                    enabled = !isTareCommandRunning && isConnected
+                ) { Text("QUITAR REGISTRO") }
             }
         }
-        if (taraRegistrada > 0.0) {
+        if (taraConfigurada) {
             Text(
-                "Tara lista para el ticket: ${String.format(Locale.US, "%.3f", taraRegistrada)} kg",
+                "Tara lista para el ticket: ${String.format(Locale.US, "%.1f", taraRegistrada)} kg",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -192,14 +280,13 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
         Spacer(modifier = Modifier.height(24.dp))
 
         // Display de Peso
-        Text("PESO NETO", style = MaterialTheme.typography.titleLarge)
         Card(
             modifier = Modifier.fillMaxWidth().height(150.dp),
             colors = CardDefaults.cardColors(containerColor = Color.Black)
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Text(
-                    text = String.format(Locale.US, "%.3f kg", pesoNeto),
+                    text = String.format(Locale.US, "%.1f kg", pesoNeto),
                     color = Color.Green,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Bold
@@ -208,12 +295,12 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
         }
 
         Text(
-            text = "Peso bruto: ${String.format(Locale.US, "%.3f", pesoBruto)} kg",
+            text = "Peso bruto: ${String.format(Locale.US, "%.1f", pesoBruto)} kg",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(top = 8.dp)
         )
         Text(
-            text = "Tara registrada: ${String.format(Locale.US, "%.3f", taraRegistrada)} kg",
+            text = "Tara registrada: ${String.format(Locale.US, "%.1f", taraRegistrada)} kg",
             style = MaterialTheme.typography.bodyLarge
         )
 
@@ -232,8 +319,8 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
                     selectedProducto?.id?.let { pId ->
                         selectedOperador?.id?.let { oId ->
                             viewModel.saveRegistro(
-                                cId, pId, oId, "", "",
-                                pesoNeto, taraRegistrada
+                                cId, pId, oId, placaVehiculo.trim(), conductor.trim(),
+                                observacionRegistro, pesoNeto, taraRegistrada
                             )
                             Toast.makeText(context, "Peso capturado correctamente", Toast.LENGTH_SHORT).show()
                         }
@@ -243,9 +330,25 @@ fun WeightScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(64.dp),
             enabled = isConnected && isWeightStable && weight != null &&
                 selectedCliente != null && selectedProducto != null && selectedOperador != null &&
-                taraRegistrada > 0.0 && indicadorTarado && pesoNeto > 0.0
+                taraConfigurada && indicadorTarado && pesoNeto > 0.0
         ) {
             Text("GUARDAR REGISTRO", fontSize = 20.sp)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = {
+                lastSavedRegistro?.let {
+                    viewModel.printRegistros(listOf(it), placaVehiculo, conductor)
+                }
+            },
+            enabled = lastSavedRegistro != null && !isPrinting,
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            if (isPrinting) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Text("IMPRIMIR", fontSize = 20.sp)
+            }
         }
     }
 }

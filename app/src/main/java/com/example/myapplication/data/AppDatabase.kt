@@ -13,7 +13,7 @@ import com.example.myapplication.data.model.TicketSequence
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Cliente::class, Producto::class, Operador::class, Registro::class, TicketSequence::class], version = 3, exportSchema = false)
+@Database(entities = [Cliente::class, Producto::class, Operador::class, Registro::class, TicketSequence::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
 
@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "pesaje_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
                 INSTANCE = instance
                 instance
             }
@@ -54,6 +54,12 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `registros` ADD COLUMN `pesoBruto` REAL NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `registros` ADD COLUMN `pesoTara` REAL NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE `registros` SET `pesoBruto` = `peso`")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `registros` ADD COLUMN `observacion` TEXT NOT NULL DEFAULT ''")
             }
         }
     }
