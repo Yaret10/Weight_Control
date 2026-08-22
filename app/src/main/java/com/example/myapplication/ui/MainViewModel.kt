@@ -56,6 +56,8 @@ class MainViewModel(context: Context) : ViewModel() {
     val isPrinting: StateFlow<Boolean> = _isPrinting.asStateFlow()
     private val _printMessages = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val printMessages: SharedFlow<String> = _printMessages.asSharedFlow()
+    private val _lastSavedRegistro = MutableStateFlow<RegistroWithDetails?>(null)
+    val lastSavedRegistro: StateFlow<RegistroWithDetails?> = _lastSavedRegistro.asStateFlow()
     
     fun getPairedDevices() = bluetoothService.getPairedDevices()
 
@@ -134,8 +136,14 @@ class MainViewModel(context: Context) : ViewModel() {
     private val _taraRegistrada = MutableStateFlow(0.0)
     val taraRegistrada: StateFlow<Double> = _taraRegistrada.asStateFlow()
 
+    private val _taraConfigurada = MutableStateFlow(false)
+    val taraConfigurada: StateFlow<Boolean> = _taraConfigurada.asStateFlow()
+
     private val _indicadorTarado = MutableStateFlow(false)
     val indicadorTarado: StateFlow<Boolean> = _indicadorTarado.asStateFlow()
+
+    private val _isTareCommandRunning = MutableStateFlow(false)
+    val isTareCommandRunning: StateFlow<Boolean> = _isTareCommandRunning.asStateFlow()
 
     fun selectCliente(cliente: Cliente) {
         _selectedCliente.value = cliente
@@ -150,15 +158,28 @@ class MainViewModel(context: Context) : ViewModel() {
     }
 
     fun capturarTara(peso: Double) {
-        if (peso > 0.0 && _taraRegistrada.value == 0.0) {
-            _taraRegistrada.value = peso
-            _indicadorTarado.value = false
+        if (peso <= 0.0 || _taraConfigurada.value || _isTareCommandRunning.value) return
+        viewModelScope.launch {
+            _isTareCommandRunning.value = true
+            bluetoothService.tareIndicator().fold(
+                onSuccess = {
+                    _taraRegistrada.value = peso
+                    _taraConfigurada.value = true
+                    _indicadorTarado.value = false
+                    _printMessages.emit("Comando T enviado al indicador")
+                },
+                onFailure = { error ->
+                    _printMessages.emit("No se pudo aplicar la tara: ${error.localizedMessage}")
+                }
+            )
+            _isTareCommandRunning.value = false
         }
     }
 
     fun registrarTara(peso: Double) {
-        if (peso > 0.0 && _taraRegistrada.value == 0.0) {
+        if (peso >= 0.0 && !_taraConfigurada.value) {
             _taraRegistrada.value = peso
+            _taraConfigurada.value = true
             _indicadorTarado.value = true
         }
     }
@@ -168,8 +189,22 @@ class MainViewModel(context: Context) : ViewModel() {
     }
 
     fun limpiarTara() {
-        _taraRegistrada.value = 0.0
-        _indicadorTarado.value = false
+        if (_isTareCommandRunning.value) return
+        viewModelScope.launch {
+            _isTareCommandRunning.value = true
+            bluetoothService.clearTareIndicator().fold(
+                onSuccess = {
+                    _taraRegistrada.value = 0.0
+                    _taraConfigurada.value = false
+                    _indicadorTarado.value = false
+                    _printMessages.emit("Comando C enviado al indicador")
+                },
+                onFailure = { error ->
+                    _printMessages.emit("No se pudo quitar la tara: ${error.localizedMessage}")
+                }
+            )
+            _isTareCommandRunning.value = false
+        }
     }
 
     private val _clienteFilter = MutableStateFlow<Int?>(null)
@@ -208,19 +243,22 @@ class MainViewModel(context: Context) : ViewModel() {
         operadorId: Int,
         placaVehiculo: String,
         conductor: String,
+        observacion: String,
         pesoNeto: Double,
         pesoTara: Double
     ) {
         viewModelScope.launch {
+            _lastSavedRegistro.value = null
             val timestamp = System.currentTimeMillis()
             val year = Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.YEAR)
-            repository.addRegistro(Registro(
+            _lastSavedRegistro.value = repository.addRegistro(Registro(
                 clienteId = clienteId,
                 productoId = productoId,
                 operadorId = operadorId,
                 codigoTicket = "",
                 placaVehiculo = placaVehiculo,
                 conductor = conductor,
+                observacion = observacion,
                 pesoBruto = pesoNeto + pesoTara,
                 pesoTara = pesoTara,
                 peso = pesoNeto,

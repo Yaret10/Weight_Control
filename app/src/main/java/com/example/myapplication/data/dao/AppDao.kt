@@ -29,7 +29,11 @@ interface AppDao {
 
     // Registros
     @Insert
-    suspend fun insertRegistro(registro: Registro)
+    suspend fun insertRegistro(registro: Registro): Long
+
+    @Transaction
+    @Query("SELECT * FROM registros WHERE id = :registroId")
+    suspend fun getRegistroWithDetails(registroId: Int): RegistroWithDetails
 
     @Query("SELECT lastNumber FROM ticket_sequences WHERE year = :year")
     suspend fun getLastTicketNumber(year: Int): Int?
@@ -38,12 +42,12 @@ interface AppDao {
     suspend fun saveTicketSequence(sequence: TicketSequence)
 
     @Transaction
-    suspend fun insertRegistroConCorrelativo(registro: Registro, year: Int): String {
+    suspend fun insertRegistroConCorrelativo(registro: Registro, year: Int): RegistroWithDetails {
         val next = (getLastTicketNumber(year) ?: 0) + 1
         val code = "%04d-%05d".format(year, next)
         saveTicketSequence(TicketSequence(year, next))
-        insertRegistro(registro.copy(codigoTicket = code))
-        return code
+        val id = insertRegistro(registro.copy(codigoTicket = code)).toInt()
+        return getRegistroWithDetails(id)
     }
 
     @Query("DELETE FROM registros")
